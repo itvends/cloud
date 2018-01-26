@@ -4,6 +4,23 @@
 #
 # gitignore definition
 #
+
+##
+## It Vends
+##
+#
+# Locally-created ignore files.
+# Licensed under GNU Affero General Public License v3.0
+#
+
+## Terraform
+*.tfstate
+.terraform
+
+##
+## Imported
+##
+#
 # Ignore-files sourced from https://github.com/github/gitignore
 # Originally licensed as Creative Commons Zero v1.0 Universal
 # Compatible with distribution under GNU Affero General Public License v3.0
