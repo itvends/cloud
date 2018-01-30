@@ -1,12 +1,12 @@
-# 
+#
 # terraform/itvends.tf
 # itvends/cloud
 #
 # Base Infrastructure Provisioning
 #
 variable "allocation" {
-	type = "string"
-	default = "10.0.0.0/16"
+  type    = "string"
+  default = "10.0.0.0/16"
 }
 
 provider "aws" {
@@ -22,8 +22,10 @@ module "vpc" {
   name   = "Oregon"
   cidr   = "${var.allocation}"
   azs    = "${data.aws_availability_zones.zones.names}"
-	
-	public_subnets = [ "${cidrsubnet(var.allocation, 8, 0)}", "${cidrsubnet(var.allocation, 8, 1)}", "${cidrsubnet(var.allocation, 8, 2)}" ]
+
+  public_subnets = ["${cidrsubnet(var.allocation, 8, 0)}",
+		"${cidrsubnet(var.allocation, 8, 1)}",
+		"${cidrsubnet(var.allocation, 8, 2)}"]
 
   enable_nat_gateway = false
   enable_vpn_gateway = false
@@ -52,7 +54,8 @@ resource "aws_instance" "bastion" {
   ami           = "ami-343c834c"
   instance_type = "t2.micro"
   key_name      = "eugene@jeeves"
-	subnet_id = "${module.vpc.public_subnets[0]}"
+  subnet_id     = "${module.vpc.public_subnets[0]}"
+
   provisioner "local-exec" {
     command = "echo ${aws_instance.bastion.public_ip} > ip_address.txt"
   }
