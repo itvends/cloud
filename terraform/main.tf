@@ -19,13 +19,14 @@ data "aws_availability_zones" "zones" {}
 ## Networking
 module "vpc" {
   source = "terraform-aws-modules/vpc/aws"
-  name   = "Oregon"
+  name   = "It Vends"
   cidr   = "${var.allocation}"
   azs    = "${data.aws_availability_zones.zones.names}"
 
   public_subnets = ["${cidrsubnet(var.allocation, 8, 0)}",
-		"${cidrsubnet(var.allocation, 8, 1)}",
-		"${cidrsubnet(var.allocation, 8, 2)}"]
+    "${cidrsubnet(var.allocation, 8, 1)}",
+    "${cidrsubnet(var.allocation, 8, 2)}",
+  ]
 
   enable_nat_gateway = false
   enable_vpn_gateway = false
