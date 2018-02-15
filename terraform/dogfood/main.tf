@@ -338,6 +338,20 @@ resource aws_route53_record "mx" {
   ttl     = "${var.dns-ttl}"
   records = ["10 inbound-smtp.${var.region}.amazonaws.com."]
 }
+resource aws_route53_record "spf" {
+	zone_id = "${aws_route53_zone.dogfood.id}"
+	name		= "${var.domain}"
+	type		= "TXT"
+	ttl			= "${var.dns-ttl}"
+	records	= ["v=spf1 include:amazonses.com -all"]
+}
+resource aws_route53_record "autodiscover" {
+	zone_id = "${aws_route53_zone.dogfood.id}"
+	name		= "autodiscover.${var.domain}"
+	type		= "CNAME"
+	ttl			= "${var.dns-ttl}"
+	records	= ["autodiscover.mail.${var.region}.awsapps.com."]
+}
 
 ## WorkSpaces
 # Manually managed, no Terraform state
