@@ -74,8 +74,8 @@ resource "aws_subnet" "private" {
 
 # Routing table
 resource aws_route_table "dogfood" {
-	tags = "${merge(var.tags, map("Name", "${var.name}-routes-public"))}"
-	vpc_id = "${aws_vpc.dogfood.id}"
+  tags   = "${merge(var.tags, map("Name", "${var.name}-routes-public"))}"
+  vpc_id = "${aws_vpc.dogfood.id}"
 
   route {
     cidr_block = "0.0.0.0/0"
@@ -89,93 +89,144 @@ resource aws_route_table "dogfood" {
 }
 
 resource "aws_route_table_association" "public" {
-	subnet_id      = "${aws_subnet.public.id}"
+  subnet_id      = "${aws_subnet.public.id}"
   route_table_id = "${aws_route_table.dogfood.id}"
 }
 
 ## Network ACLs
 # Default
 resource "aws_default_network_acl" "default" {
-	tags = "${merge(var.tags, map("Name", "${var.name}-acl-default"))}"
-	default_network_acl_id = "${aws_vpc.dogfood.default_network_acl_id}"
+  tags                   = "${merge(var.tags, map("Name", "${var.name}-acl-default"))}"
+  default_network_acl_id = "${aws_vpc.dogfood.default_network_acl_id}"
 
-	# Inbound
-	ingress {
-		rule_no = "1"
-		protocol = "-1"
-		from_port = "0"
-		to_port = "0"
-		cidr_block = "0.0.0.0/0"
-		action = "deny"
-	}
-	ingress {
-		rule_no = "2"
-		protocol = "-1"
-		from_port = "0"
-		to_port = "0"
-		ipv6_cidr_block = "::/0"
-		action = "deny"
-	}
-	# Outbound
-	egress {
-		rule_no = "1"
-		protocol = "-1"
-		from_port = "0"
-		to_port = "0"
-		cidr_block = "0.0.0.0/0"
-		action = "deny"
-	}
-	egress {
-		rule_no = "2"
-		protocol = "-1"
-		from_port = "0"
-		to_port = "0"
-		ipv6_cidr_block = "::/0"
-		action = "deny"
-	}
+  # Inbound
+  ingress {
+    rule_no    = "1"
+    protocol   = "-1"
+    from_port  = "0"
+    to_port    = "0"
+    cidr_block = "0.0.0.0/0"
+    action     = "deny"
+  }
+
+  ingress {
+    rule_no         = "2"
+    protocol        = "-1"
+    from_port       = "0"
+    to_port         = "0"
+    ipv6_cidr_block = "::/0"
+    action          = "deny"
+  }
+
+  # Outbound
+  egress {
+    rule_no    = "1"
+    protocol   = "-1"
+    from_port  = "0"
+    to_port    = "0"
+    cidr_block = "0.0.0.0/0"
+    action     = "deny"
+  }
+
+  egress {
+    rule_no         = "2"
+    protocol        = "-1"
+    from_port       = "0"
+    to_port         = "0"
+    ipv6_cidr_block = "::/0"
+    action          = "deny"
+  }
 }
+
 # Public
 resource "aws_network_acl" "public" {
-	vpc_id = "${aws_vpc.dogfood.id}"
-	tags = "${merge(var.tags, map("Name", "${var.name}-acl-public"))}"
-	subnet_ids = [ "${aws_subnet.public.id}" ]
+  vpc_id     = "${aws_vpc.dogfood.id}"
+  tags       = "${merge(var.tags, map("Name", "${var.name}-acl-public"))}"
+  subnet_ids = ["${aws_subnet.public.id}"]
 
-	# Inbound
-	ingress {
-		rule_no = "1"
-		protocol = "-1"
-		from_port = "0"
-		to_port = "0"
-		cidr_block = "0.0.0.0/0"
-		action = "allow"
-	}
-	ingress {
-		rule_no = "2"
-		protocol = "-1"
-		from_port = "0"
-		to_port = "0"
-		ipv6_cidr_block = "::/0"
-		action = "allow"
-	}
-	# Outbound
-	egress {
-		rule_no = "1"
-		protocol = "-1"
-		from_port = "0"
-		to_port = "0"
-		cidr_block = "0.0.0.0/0"
-		action = "allow"
-	}
-	egress {
-		rule_no = "2"
-		protocol = "-1"
-		from_port = "0"
-		to_port = "0"
-		ipv6_cidr_block = "::/0"
-		action = "allow"
-	}
+  # Inbound
+  ingress {
+    rule_no    = "1"
+    protocol   = "-1"
+    from_port  = "0"
+    to_port    = "0"
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+
+  ingress {
+    rule_no         = "2"
+    protocol        = "-1"
+    from_port       = "0"
+    to_port         = "0"
+    ipv6_cidr_block = "::/0"
+    action          = "allow"
+  }
+
+  # Outbound
+  egress {
+    rule_no    = "1"
+    protocol   = "-1"
+    from_port  = "0"
+    to_port    = "0"
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+
+  egress {
+    rule_no         = "2"
+    protocol        = "-1"
+    from_port       = "0"
+    to_port         = "0"
+    ipv6_cidr_block = "::/0"
+    action          = "allow"
+  }
 }
 
+# Private
+resource "aws_network_acl" "private" {
+  vpc_id     = "${aws_vpc.dogfood.id}"
+  tags       = "${merge(var.tags, map("Name", "${var.name}-acl-private"))}"
+  subnet_ids = ["${aws_subnet.private.id}"]
+
+  # Inbound
+  ingress {
+    rule_no    = "1"
+    protocol   = "-1"
+    from_port  = "0"
+    to_port    = "0"
+    cidr_block = "${aws_subnet.public.cidr_block}"
+    action     = "allow"
+  }
+
+  ingress {
+    rule_no         = "2"
+    protocol        = "-1"
+    from_port       = "0"
+    to_port         = "0"
+    ipv6_cidr_block = "${aws_subnet.public.ipv6_cidr_block}"
+    action          = "allow"
+  }
+
+  # Outbound
+  egress {
+    rule_no    = "1"
+    protocol   = "-1"
+    from_port  = "0"
+    to_port    = "0"
+    cidr_block = "${aws_subnet.public.cidr_block}"
+    action     = "allow"
+  }
+
+  egress {
+    rule_no         = "2"
+    protocol        = "-1"
+    from_port       = "0"
+    to_port         = "0"
+    ipv6_cidr_block = "${aws_subnet.public.ipv6_cidr_block}"
+    action          = "allow"
+  }
+}
 
 ## Security Groups
 resource "aws_security_group" "dogfood" {
@@ -183,18 +234,19 @@ resource "aws_security_group" "dogfood" {
   vpc_id = "${aws_vpc.dogfood.id}"
   tags   = "${merge(var.tags, map("Name", "${var.name}-sg-dogfood"))}"
 
-	ingress {
-		description = "Inbound"
-		protocol = "-1"
-		from_port = "0"
-		to_port = "0"
-		cidr_blocks = ["0.0.0.0/0"]
-		ipv6_cidr_blocks = ["::/0"]
-	}
+  ingress {
+    description      = "Inbound"
+    protocol         = "-1"
+    from_port        = "0"
+    to_port          = "0"
+    cidr_blocks      = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::/0"]
+  }
+
   egress {
-		description = "Outbound"
-    protocol = "-1"
-		from_port        = "0"
+    description      = "Outbound"
+    protocol         = "-1"
+    from_port        = "0"
     to_port          = "0"
     cidr_blocks      = ["0.0.0.0/0"]
     ipv6_cidr_blocks = ["::/0"]
@@ -228,53 +280,65 @@ resource "aws_instance" "dogfood" {
 
 ## Zone
 resource "aws_route53_zone" "dogfood" {
-	name = "${var.domain}."
-	tags = "${merge(var.tags, map("Name", "${var.name}-zone"))}"
+  name = "${var.domain}."
+  tags = "${merge(var.tags, map("Name", "${var.name}-zone"))}"
 }
+
 ## Records
 # Start-of-Authority
 resource "aws_route53_record" "soa" {
-	zone_id = "${aws_route53_zone.dogfood.id}"
-	name = "${var.domain}"
-	type = "SOA"
-	ttl = "${var.dns-ttl}"
-	records = [ "${aws_route53_zone.dogfood.name_servers.0}. hostmaster.${var.domain}. 1 ${var.dns-ttl} ${var.dns-ttl} ${var.dns-ttl * 1000} ${var.dns-ttl}"]
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  name    = "${var.domain}"
+  type    = "SOA"
+  ttl     = "${var.dns-ttl}"
+  records = ["${aws_route53_zone.dogfood.name_servers.0}. hostmaster.${var.domain}. 1 ${var.dns-ttl} ${var.dns-ttl} ${var.dns-ttl * 1000} ${var.dns-ttl}"]
 }
+
 # Nameservers
 resource "aws_route53_record" "ns" {
-	zone_id = "${aws_route53_zone.dogfood.id}"
-	name = "${var.domain}"
-	type = "NS"
-	ttl = "${var.dns-ttl * 1000}"
-	records =  [ "${formatlist("%s.", aws_route53_zone.dogfood.name_servers)}" ]
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  name    = "${var.domain}"
+  type    = "NS"
+  ttl     = "${var.dns-ttl * 1000}"
+  records = ["${formatlist("%s.", aws_route53_zone.dogfood.name_servers)}"]
 }
 
 ##
 ## Directory Service
 ##
 
-#resource "aws_directory_service_directory" "dogfood" {
-#	name = "${var.domain}"
-#	password = "${var.password}"
-#	type = "SimpleAD"
-#	size = "Small"
-#	tags = "${merge(var.tags, map("Name", "${var.name}-zone"))}"
-#
-#	vpc_settings {
-#		vpc_id = "${aws_vpc.dogfood.id}"
-#		subnet_ids = [ "${aws_subnet.public.id}", "${aws_subnet.private.id}" ]
-#	}
-#}
+resource "aws_directory_service_directory" "dogfood" {
+  name       = "${var.domain}"
+  password   = "${var.password}"
+  type       = "SimpleAD"
+  size       = "Small"
+  tags       = "${merge(var.tags, map("Name", "${var.name}-directory"))}"
+  enable_sso = true
+  alias      = "${var.alias}"
+  short_name = "${var.alias}"
 
+  vpc_settings {
+    vpc_id     = "${aws_vpc.dogfood.id}"
+    subnet_ids = ["${aws_subnet.public.id}", "${aws_subnet.private.id}"]
+  }
+}
 
+## AWS Management Console
+# Manually managed, no Terraform state
 
+## WorkDocs
+# Manually managed, no Terraform state
 
+## WorkMail
+# Manually managed, some components in Terraform.
+resource aws_route53_record "mx" {
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  name    = "${var.domain}"
+  type    = "MX"
+  ttl     = "${var.dns-ttl}"
+  records = ["10 inbound-smtp.${var.region}.amazonaws.com."]
+}
 
-
-
-
-
-
-
-
+## WorkSpaces
+# Manually managed, no Terraform state
 
