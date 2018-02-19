@@ -278,10 +278,16 @@ resource "aws_instance" "dogfood" {
 ## DNS
 ##
 
-## Zone
+## Delegation Set
+resource "aws_route53_delegation_set" "dogfood" {
+  reference_name = "${var.alias}"
+}
+
+## Zones
 resource "aws_route53_zone" "dogfood" {
-  name = "${var.domain}."
-  tags = "${merge(var.tags, map("Name", "${var.name}-zone"))}"
+  name              = "${var.domain}."
+  tags              = "${merge(var.tags, map("Name", "${var.name}-zone"))}"
+  delegation_set_id = "${aws_route53_delegation_set.dogfood.id}"
 }
 
 ## Records
@@ -303,7 +309,11 @@ resource "aws_route53_record" "ns" {
   records = ["${formatlist("%s.", aws_route53_zone.dogfood.name_servers)}"]
 }
 
-# Email
+##
+## Email
+##
+
+## SMTP Delivery
 resource aws_route53_record "mx" {
   zone_id = "${aws_route53_zone.dogfood.id}"
   name    = "${var.domain}"
@@ -311,22 +321,78 @@ resource aws_route53_record "mx" {
   ttl     = "${var.dns-ttl}"
   records = ["10 inbound-smtp.${var.region}.amazonaws.com."]
 }
-resource aws_route53_record "spf" {
-	zone_id = "${aws_route53_zone.dogfood.id}"
-	name		= "${var.domain}"
-	type		= "TXT"
-	ttl			= "${var.dns-ttl}"
-	records	= ["v=spf1 include:amazonses.com -all"]
+
+## Routing
+resource "aws_ses_receipt_rule_set" "dogfood" {
+  rule_set_name = "${var.region}"
 }
 
-# Exchange/IMAP Autodiscovery
-resource aws_route53_record "autodiscover" {
-	zone_id = "${aws_route53_zone.dogfood.id}"
-	name		= "autodiscover.${var.domain}"
-	type		= "CNAME"
-	ttl			= "${var.dns-ttl}"
-	records	= ["autodiscover.mail.${var.region}.awsapps.com."]
+resource "aws_ses_active_receipt_rule_set" "dogfood" {
+  rule_set_name = "${aws_ses_receipt_rule_set.dogfood.rule_set_name}"
 }
+
+## Rules
+# WorkMail
+resource "aws_ses_receipt_rule" "workmail" {
+  rule_set_name = "${aws_ses_receipt_rule_set.dogfood.rule_set_name}"
+  name          = "${var.alias}-workmail"
+  recipients    = ["${var.domain}"]
+  enabled       = true
+  scan_enabled  = true
+  tls_policy    = "Require"
+
+  workmail_action {
+    organization_arn = "arn:aws:workmail:${var.region}:${var.workmail_arn}"
+    position         = "1"
+  }
+}
+
+## Sender Policy Framework
+resource aws_route53_record "spf" {
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  name    = "${var.domain}"
+  type    = "TXT"
+  ttl     = "${var.dns-ttl}"
+  records = ["v=spf1 include:amazonses.com -all"]
+}
+
+## Exchange/IMAP Autodiscovery
+resource aws_route53_record "autodiscover" {
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  name    = "autodiscover.${var.domain}"
+  type    = "CNAME"
+  ttl     = "${var.dns-ttl}"
+  records = ["autodiscover.mail.${var.region}.awsapps.com."]
+}
+
+## Simple Email Service(SES) identity verification
+resource "aws_ses_domain_identity" "dogfood" {
+  domain = "${var.domain}"
+}
+
+resource "aws_ses_domain_dkim" "dogfood" {
+  domain = "${var.domain}"
+}
+
+resource "aws_route53_record" "ses-token" {
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  name    = "_amazonses.${var.domain}"
+  type    = "TXT"
+  ttl     = "${var.dns-ttl}"
+  records = ["${aws_ses_domain_identity.dogfood.verification_token}"]
+}
+
+resource "aws_route53_record" "ses-dkim" {
+  zone_id = "${aws_route53_zone.dogfood.id}"
+
+  # TODO: Why does length() fail here?
+  count   = "3"
+  name    = "${element(aws_ses_domain_dkim.dogfood.dkim_tokens, count.index)}._domainkey.${var.domain}"
+  type    = "CNAME"
+  ttl     = "${var.dns-ttl}"
+  records = ["${element(aws_ses_domain_dkim.dogfood.dkim_tokens, count.index)}.dkim.amazonses.com"]
+}
+
 ##
 ## Directory Service
 ##
@@ -350,11 +416,14 @@ resource "aws_directory_service_directory" "dogfood" {
 ## AWS Management Console
 # Manually managed, no Terraform state
 
+
 ## WorkDocs
 # Manually managed, no Terraform state
 
+
 ## WorkMail
 # Manually managed, some components in Terraform.
+
 
 ## WorkSpaces
 # Manually managed, no Terraform state

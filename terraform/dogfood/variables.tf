@@ -61,3 +61,6 @@ variable "region" {
   description = "AWS Region for instantiation"
   default     = "us-east-1"
 }
+variable "workmail_arn" {
+	description = "ARN of WorkMail instance"
+}
