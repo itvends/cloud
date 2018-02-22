@@ -19,6 +19,11 @@ provider "aws" {
   version = "~> 1.7"
 }
 
+provider "aws" {
+  region = "us-east-1"
+  alias  = "global"
+}
+
 data "aws_availability_zones" "available" {
   state = "available"
 }
@@ -297,6 +302,14 @@ resource "aws_route53_record" "soa" {
   name    = "${var.domain}"
   type    = "SOA"
   ttl     = "${var.dns-ttl}"
+
+  # MNAME: AWS NS
+  # RNAME: hostmaster@ domain
+  # SERIAL: 1
+  # REFRESH: TTL variable
+  # RETRY: TTL variable
+  # EXPIRE: TTL variable * 1000
+  # TTL/Minimum: TTL variable
   records = ["${aws_route53_zone.dogfood.name_servers.0}. hostmaster.${var.domain}. 1 ${var.dns-ttl} ${var.dns-ttl} ${var.dns-ttl * 1000} ${var.dns-ttl}"]
 }
 
@@ -416,15 +429,186 @@ resource "aws_directory_service_directory" "dogfood" {
 ## AWS Management Console
 # Manually managed, no Terraform state
 
-
 ## WorkDocs
 # Manually managed, no Terraform state
-
 
 ## WorkMail
 # Manually managed, some components in Terraform.
 
-
 ## WorkSpaces
 # Manually managed, no Terraform state
 
+##
+## Web
+##
+
+# Bucket
+resource "aws_s3_bucket" "website" {
+  bucket = "${var.domain}"
+  acl    = "public"
+  tags   = "${merge(var.tags, map("Name", "${var.name}-website"))}"
+
+  policy = <<EOF
+{
+    "Version": "2008-10-17",
+    "Statement": [
+    {
+        "Sid": "PublicReadForGetBucketObjects",
+        "Effect": "Allow",
+        "Principal": {
+            "AWS": "*"
+         },
+         "Action": "s3:GetObject",
+         "Resource": "arn:aws:s3:::${var.domain}/*"
+    }]
+}
+EOF
+
+  versioning {
+    enabled = true
+  }
+
+  lifecycle_rule {
+    id      = "Version Archive"
+    enabled = true
+
+    noncurrent_version_transition {
+      days          = 30
+      storage_class = "GLACIER"
+    }
+  }
+}
+
+# SSL Certificate
+resource "aws_acm_certificate" "website" {
+  provider                  = "aws.global"
+  domain_name               = "${var.domain}"
+  subject_alternative_names = ["www.${var.domain}"]
+  validation_method         = "DNS"
+  tags                      = "${merge(var.tags, map("Name", "${var.name}-certificate"))}"
+}
+
+resource "aws_route53_record" "website-certifcate-root" {
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  ttl     = "${var.dns-ttl}"
+  name    = "${aws_acm_certificate.website.domain_validation_options.0.resource_record_name}"
+  type    = "${aws_acm_certificate.website.domain_validation_options.0.resource_record_type}"
+  records = ["${aws_acm_certificate.website.domain_validation_options.0.resource_record_value}"]
+}
+
+resource "aws_route53_record" "website-certificate-www" {
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  ttl     = "${var.dns-ttl}"
+  name    = "${aws_acm_certificate.website.domain_validation_options.1.resource_record_name}"
+  type    = "${aws_acm_certificate.website.domain_validation_options.1.resource_record_type}"
+  records = ["${aws_acm_certificate.website.domain_validation_options.1.resource_record_value}"]
+}
+
+# Cloudfront Distribution
+resource "aws_cloudfront_distribution" "website" {
+  enabled             = true
+  price_class         = "PriceClass_100"
+  default_root_object = "index.html"
+  is_ipv6_enabled     = true
+
+  aliases = ["${var.domain}", "www.${var.domain}"]
+  tags    = "${merge(var.tags, map("Name", "${var.name}-cloudfront"))}"
+
+  origin {
+    origin_id   = "${var.alias}_website_origin"
+    domain_name = "${aws_s3_bucket.website.bucket_domain_name}"
+
+    custom_origin_config {
+      origin_protocol_policy = "http-only"
+      http_port              = "80"
+      https_port             = "443"
+      origin_ssl_protocols   = ["TLSv1"]
+    }
+  }
+
+  default_cache_behavior {
+    min_ttl                = "0"
+    default_ttl            = "${var.dns-ttl}"
+    max_ttl                = "${var.dns-ttl * 1000}"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "${var.alias}_website_origin"
+    viewer_protocol_policy = "redirect-to-https"
+
+    forwarded_values {
+      query_string = false
+
+      cookies {
+        forward = "none"
+      }
+    }
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    acm_certificate_arn      = "${aws_acm_certificate.website.arn}"
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2018"
+  }
+
+  custom_error_response {
+    error_caching_min_ttl = "${var.dns-ttl}"
+    error_code            = 404
+    response_code         = 200
+    response_page_path    = "/error.html"
+  }
+}
+
+# DNS Records
+resource "aws_route53_record" "website-root-v4" {
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  name    = "${var.domain}"
+  type    = "A"
+
+  alias {
+    name                   = "${aws_cloudfront_distribution.website.domain_name}"
+    zone_id                = "${aws_cloudfront_distribution.website.hosted_zone_id}"
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "website-root-v6" {
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  name    = "${var.domain}"
+  type    = "AAAA"
+
+  alias {
+    name                   = "${aws_cloudfront_distribution.website.domain_name}"
+    zone_id                = "${aws_cloudfront_distribution.website.hosted_zone_id}"
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "website-www-v4" {
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  name    = "www.${var.domain}"
+  type    = "A"
+
+  alias {
+    name                   = "${aws_cloudfront_distribution.website.domain_name}"
+    zone_id                = "${aws_cloudfront_distribution.website.hosted_zone_id}"
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "website-www-v6" {
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  name    = "www.${var.domain}"
+  type    = "AAAA"
+
+  alias {
+    name                   = "${aws_cloudfront_distribution.website.domain_name}"
+    zone_id                = "${aws_cloudfront_distribution.website.hosted_zone_id}"
+    evaluate_target_health = false
+  }
+}
