@@ -477,6 +477,25 @@ EOF
       storage_class = "GLACIER"
     }
   }
+
+  website {
+    index_document = "index.html"
+    error_document = "error.html"
+  }
+}
+
+resource "aws_s3_bucket_object" "website-blog-redirect" {
+  bucket           = "${aws_s3_bucket.website.bucket}"
+  key              = "blog"
+  content          = "null"
+  website_redirect = "https://itvends.blog"
+}
+
+resource "aws_s3_bucket_object" "website-vend" {
+  bucket           = "${aws_s3_bucket.website.bucket}"
+  key              = "vend"
+  content          = "null"
+  website_redirect = "https://itvends.com/vend.php"
 }
 
 # SSL Certificate
@@ -516,13 +535,14 @@ resource "aws_cloudfront_distribution" "website" {
 
   origin {
     origin_id   = "${var.alias}_website_origin"
-    domain_name = "${aws_s3_bucket.website.bucket_domain_name}"
+    domain_name = "${aws_s3_bucket.website.website_endpoint}"
 
+    # S3 Website backend is HTTP-only
     custom_origin_config {
       origin_protocol_policy = "http-only"
       http_port              = "80"
       https_port             = "443"
-      origin_ssl_protocols   = ["TLSv1"]
+      origin_ssl_protocols   = ["TLSv1"]   # Required, but unused
     }
   }
 
