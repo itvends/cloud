@@ -6,7 +6,7 @@
 It Vends Cloud
 ==============
 
-This repository contains configuration and management information for It Vends Cloud.
+This repository contains configuration and management information for the It Vends Cloud Platform.
 
 
 Terraform Provisioning
