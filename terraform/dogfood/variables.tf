@@ -52,14 +52,26 @@ variable "pubkey" {
   description = "SSH Public Key for admin"
 }
 
-variable "ami" {
-  description = "Amazon Machine Image for dogfood host"
-  default     = "ami-d728afaf"                          # FreeBSD 11.1
+variable "ami-bastion" {
+  description = "Amazon Machine Image for bastion host"
+  default     = "ami-fd1d9485" # FreeBSD 11.1-STABLE-amd64-2018-02-26
+}
+variable "ami-master" {
+  description = "Amazon Machine Image for Salt Master"
+  default     = "ami-fd1d9485" # FreeBSD 11.1-STABLE-amd64-2018-02-26
+}
+variable "ami-portal" {
+	description = "Amazon Machine Image for Portal host"
+	default = "ami-74800e0c" # Windows_Server-2016-English-Full-Base-2018.02.23
+}
+variable "ami-controller" {
+	description = "Amazon Machine Image for Domain Controller"
+	default = "ami-48820c30" # Windows_Server-2016-English-Core-Base-2018.02.23
 }
 
 variable "region" {
   description = "AWS Region for instantiation"
-  default     = "us-east-1"
+  default     = "us-east-1" # us-east-1, us-west-2, or eu-west-1 ONLY! Services availability. 
 }
 variable "workmail_arn" {
 	description = "ARN of WorkMail instance"

@@ -269,8 +269,8 @@ resource "aws_key_pair" "dogfood" {
 }
 
 ## Bastion
-resource "aws_instance" "dogfood" {
-  ami                    = "${var.ami}"
+resource "aws_instance" "bastion" {
+  ami                    = "${var.ami-bastion}"
   instance_type          = "t2.micro"
   tags                   = "${merge(var.tags, map("Name", "${var.name}-bastion"))}"
   volume_tags            = "${merge(var.tags, map("Name", "${var.name}-bastion-system"))}"
@@ -278,6 +278,103 @@ resource "aws_instance" "dogfood" {
   subnet_id              = "${aws_subnet.public.id}"
   vpc_security_group_ids = ["${aws_security_group.dogfood.id}"]
 }
+
+resource "aws_route53_record" "bastion-a" {
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  name    = "bastion.${var.domain}"
+  type    = "A"
+  ttl     = "${var.dns-ttl}"
+
+  records = ["${aws_instance.bastion.public_ip}"]
+}
+
+resource "aws_route53_record" "bastion-aaaa" {
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  name    = "bastion.${var.domain}"
+  type    = "AAAA"
+  ttl     = "${var.dns-ttl}"
+
+  records = ["${aws_instance.bastion.ipv6_addresses}"]
+}
+
+## Salt Master
+resource "aws_instance" "master" {
+	ami = "${var.ami-master}"
+	instance_type = "t2.micro"
+  tags                   = "${merge(var.tags, map("Name", "${var.name}-master"))}"
+  volume_tags            = "${merge(var.tags, map("Name", "${var.name}-master-system"))}"
+  key_name               = "${aws_key_pair.dogfood.key_name}"
+  subnet_id              = "${aws_subnet.public.id}"
+  vpc_security_group_ids = ["${aws_security_group.dogfood.id}"]
+}
+resource "aws_route53_record" "master-a" {
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  name    = "master.${var.domain}"
+  type    = "A"
+  ttl     = "${var.dns-ttl}"
+  records = ["${aws_instance.master.public_ip}"]
+}
+
+resource "aws_route53_record" "master-aaaa" {
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  name    = "master.${var.domain}"
+  type    = "AAAA"
+  ttl     = "${var.dns-ttl}"
+  records = ["${aws_instance.master.ipv6_addresses}"]
+}
+
+
+## Domain Controller`
+resource "aws_instance" "controller" {
+	ami = "${var.ami-controller}"
+	instance_type = "t2.micro"
+  tags                   = "${merge(var.tags, map("Name", "${var.name}-controller"))}"
+  volume_tags            = "${merge(var.tags, map("Name", "${var.name}-controller-system"))}"
+  key_name               = "${aws_key_pair.dogfood.key_name}"
+  subnet_id              = "${aws_subnet.public.id}"
+  vpc_security_group_ids = ["${aws_security_group.dogfood.id}"]
+}
+resource "aws_route53_record" "controller-a" {
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  name    = "controller.${var.domain}"
+  type    = "A"
+  ttl     = "${var.dns-ttl}"
+  records = ["${aws_instance.controller.public_ip}"]
+}
+
+resource "aws_route53_record" "controller-aaaa" {
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  name    = "controller.${var.domain}"
+  type    = "AAAA"
+  ttl     = "${var.dns-ttl}"
+  records = ["${aws_instance.controller.ipv6_addresses}"]
+}
+
+## Portal
+resource "aws_instance" "portal" {
+	ami = "${var.ami-portal}"
+	instance_type = "t2.small"
+  tags                   = "${merge(var.tags, map("Name", "${var.name}-portal"))}"
+  volume_tags            = "${merge(var.tags, map("Name", "${var.name}-portal-system"))}"
+  key_name               = "${aws_key_pair.dogfood.key_name}"
+  subnet_id              = "${aws_subnet.public.id}"
+  vpc_security_group_ids = ["${aws_security_group.dogfood.id}"]
+}
+resource "aws_route53_record" "portal-a" {
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  name    = "portal.${var.domain}"
+  type    = "A"
+  ttl     = "${var.dns-ttl}"
+  records = ["${aws_instance.portal.public_ip}"]
+}
+resource "aws_route53_record" "portal-aaaa" {
+  zone_id = "${aws_route53_zone.dogfood.id}"
+  name    = "portal.${var.domain}"
+  type    = "AAAA"
+  ttl     = "${var.dns-ttl}"
+  records = ["${aws_instance.portal.ipv6_addresses}"]
+}
+
 
 ##
 ## DNS
