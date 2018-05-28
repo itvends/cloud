@@ -11,6 +11,8 @@ Features
 --------
 
   * Persistence across AMI refreshes
-      * Data Volumes
+      * Data Volumes vs EFS?
+      * /home, /srv
       * Configuration in Salt
   * git self-hosting
+  * Guacamole
