@@ -29,6 +29,106 @@ data "aws_availability_zones" "available" {
 }
 
 ##
+## IAM Bits
+##
+
+## Allow Instances to join the Domain
+resource "aws_iam_role" "directory_writer" {
+  name = "IAM_ROLE_ADWRITER"
+  path = "/"
+
+  assume_role_policy = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": "sts:AssumeRole",
+            "Principal": {
+               "Service": "ec2.amazonaws.com"
+            },
+            "Effect": "Allow",
+            "Sid": ""
+        }
+    ]
+}
+EOF
+}
+
+resource "aws_iam_instance_profile" "directory_writer" {
+  name = "Terraform-Directory-Writer"
+  role = "${aws_iam_role.directory_writer.name}"
+}
+
+resource "aws_iam_role_policy" "directory_writer" {
+  name = "Terraform-Directory-Writer"
+  role = "${aws_iam_role.directory_writer.id}"
+
+  policy = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AllowAccessToSSM",
+            "Effect": "Allow",
+            "Action": [
+                "ssm:DescribeAssociation",
+                "ssm:ListAssociations",
+                "ssm:GetDocument",
+                "ssm:ListInstanceAssociations",
+                "ssm:UpdateAssociationStatus",
+                "ssm:UpdateInstanceInformation",
+                "ec2messages:AcknowledgeMessage",
+                "ec2messages:DeleteMessage",
+                "ec2messages:FailMessage",
+                "ec2messages:GetEndpoint",
+                "ec2messages:GetMessages",
+                "ec2messages:SendReply",
+                "ds:CreateComputer",
+                "ds:DescribeDirectories",
+                "ec2:DescribeInstanceStatus"
+            ],
+            "Resource": [
+                "*"
+            ]
+        }
+    ]
+}
+EOF
+}
+
+##
+## State Manger
+##
+
+## Instances join Domain
+resource "aws_ssm_document" "directory_writer" {
+  name          = "Terraform-Directory-Writer"
+  document_type = "Command"
+
+  content = <<EOF
+{
+        "schemaVersion": "1.0",
+        "description": "Join instances to the domain",
+        "runtimeConfig": {
+           "aws:domainJoin": {
+               "properties": {
+                  "directoryId": "${aws_directory_service_directory.dogfood.id}",
+                  "directoryName": "${var.domain}",
+                  "directoryOU": "${var.ldapou}",
+                  "dnsIpAddresses": [
+                     "${aws_directory_service_directory.dogfood.dns_ip_addresses[0]}",
+                     "${aws_directory_service_directory.dogfood.dns_ip_addresses[1]}"
+                  ]
+               }
+           }
+        }
+}
+EOF
+
+  depends_on = ["aws_directory_service_directory.dogfood"]
+}
+
+##
 ## Networking
 ##
 
@@ -55,7 +155,7 @@ resource "aws_internet_gateway" "dogfood" {
 }
 
 # Subnets
-resource "aws_subnet" "public" {
+resource "aws_subnet" "public-A" {
   vpc_id            = "${aws_vpc.dogfood.id}"
   availability_zone = "${data.aws_availability_zones.available.names[0]}"
   cidr_block        = "${cidrsubnet(aws_vpc.dogfood.cidr_block, 8, 0)}"
@@ -63,15 +163,37 @@ resource "aws_subnet" "public" {
 
   map_public_ip_on_launch         = true
   assign_ipv6_address_on_creation = true
-  tags                            = "${merge(var.tags, map("Name", "${var.name}-subnet-public"))}"
+  tags                            = "${merge(var.tags, map("Name", "${var.name}-subnet-public-A"))}"
 }
 
-resource "aws_subnet" "private" {
-  tags              = "${merge(var.tags, map("Name", "${var.name}-subnet-private"))}"
+resource "aws_subnet" "public-B" {
   vpc_id            = "${aws_vpc.dogfood.id}"
   availability_zone = "${data.aws_availability_zones.available.names[1]}"
   cidr_block        = "${cidrsubnet(aws_vpc.dogfood.cidr_block, 8, 1)}"
   ipv6_cidr_block   = "${cidrsubnet(aws_vpc.dogfood.ipv6_cidr_block, 8, 1)}"
+
+  map_public_ip_on_launch         = true
+  assign_ipv6_address_on_creation = true
+  tags                            = "${merge(var.tags, map("Name", "${var.name}-subnet-public-B"))}"
+}
+
+resource "aws_subnet" "private-A" {
+  tags              = "${merge(var.tags, map("Name", "${var.name}-subnet-private-A"))}"
+  vpc_id            = "${aws_vpc.dogfood.id}"
+  availability_zone = "${data.aws_availability_zones.available.names[0]}"
+  cidr_block        = "${cidrsubnet(aws_vpc.dogfood.cidr_block, 8, 4)}"
+  ipv6_cidr_block   = "${cidrsubnet(aws_vpc.dogfood.ipv6_cidr_block, 8, 4)}"
+
+  map_public_ip_on_launch         = false
+  assign_ipv6_address_on_creation = true
+}
+
+resource "aws_subnet" "private-B" {
+  tags              = "${merge(var.tags, map("Name", "${var.name}-subnet-private-B"))}"
+  vpc_id            = "${aws_vpc.dogfood.id}"
+  availability_zone = "${data.aws_availability_zones.available.names[1]}"
+  cidr_block        = "${cidrsubnet(aws_vpc.dogfood.cidr_block, 8, 5)}"
+  ipv6_cidr_block   = "${cidrsubnet(aws_vpc.dogfood.ipv6_cidr_block, 8, 5)}"
 
   map_public_ip_on_launch         = false
   assign_ipv6_address_on_creation = true
@@ -93,8 +215,23 @@ resource aws_route_table "dogfood" {
   }
 }
 
-resource "aws_route_table_association" "public" {
-  subnet_id      = "${aws_subnet.public.id}"
+resource "aws_route_table_association" "public-A" {
+  subnet_id      = "${aws_subnet.public-A.id}"
+  route_table_id = "${aws_route_table.dogfood.id}"
+}
+
+resource "aws_route_table_association" "public-B" {
+  subnet_id      = "${aws_subnet.public-B.id}"
+  route_table_id = "${aws_route_table.dogfood.id}"
+}
+
+resource "aws_route_table_association" "private-A" {
+  subnet_id      = "${aws_subnet.private-A.id}"
+  route_table_id = "${aws_route_table.dogfood.id}"
+}
+
+resource "aws_route_table_association" "private-B" {
+  subnet_id      = "${aws_subnet.private-B.id}"
   route_table_id = "${aws_route_table.dogfood.id}"
 }
 
@@ -147,7 +284,7 @@ resource "aws_default_network_acl" "default" {
 resource "aws_network_acl" "public" {
   vpc_id     = "${aws_vpc.dogfood.id}"
   tags       = "${merge(var.tags, map("Name", "${var.name}-acl-public"))}"
-  subnet_ids = ["${aws_subnet.public.id}"]
+  subnet_ids = ["${aws_subnet.public-A.id}", "${aws_subnet.public-B.id}"]
 
   # Inbound
   ingress {
@@ -192,7 +329,7 @@ resource "aws_network_acl" "public" {
 resource "aws_network_acl" "private" {
   vpc_id     = "${aws_vpc.dogfood.id}"
   tags       = "${merge(var.tags, map("Name", "${var.name}-acl-private"))}"
-  subnet_ids = ["${aws_subnet.private.id}"]
+  subnet_ids = ["${aws_subnet.private-A.id}", "${aws_subnet.private-B.id}"]
 
   # Inbound
   ingress {
@@ -200,7 +337,7 @@ resource "aws_network_acl" "private" {
     protocol   = "-1"
     from_port  = "0"
     to_port    = "0"
-    cidr_block = "${aws_subnet.public.cidr_block}"
+    cidr_block = "${aws_subnet.public-A.cidr_block}"
     action     = "allow"
   }
 
@@ -209,26 +346,297 @@ resource "aws_network_acl" "private" {
     protocol        = "-1"
     from_port       = "0"
     to_port         = "0"
-    ipv6_cidr_block = "${aws_subnet.public.ipv6_cidr_block}"
+    ipv6_cidr_block = "${aws_subnet.public-A.ipv6_cidr_block}"
     action          = "allow"
   }
 
+  ingress {
+    rule_no    = "3"
+    protocol   = "-1"
+    from_port  = "0"
+    to_port    = "0"
+    cidr_block = "${aws_subnet.public-B.cidr_block}"
+    action     = "allow"
+  }
+
+  ingress {
+    rule_no         = "4"
+    protocol        = "-1"
+    from_port       = "0"
+    to_port         = "0"
+    ipv6_cidr_block = "${aws_subnet.public-B.ipv6_cidr_block}"
+    action          = "allow"
+  }
+
+  ingress {
+    rule_no    = "5"
+    protocol   = "-1"
+    from_port  = "0"
+    to_port    = "0"
+    cidr_block = "${aws_subnet.private-A.cidr_block}"
+    action     = "allow"
+  }
+
+  ingress {
+    rule_no         = "6"
+    protocol        = "-1"
+    from_port       = "0"
+    to_port         = "0"
+    ipv6_cidr_block = "${aws_subnet.private-A.ipv6_cidr_block}"
+    action          = "allow"
+  }
+
+  ingress {
+    rule_no    = "7"
+    protocol   = "-1"
+    from_port  = "0"
+    to_port    = "0"
+    cidr_block = "${aws_subnet.private-B.cidr_block}"
+    action     = "allow"
+  }
+
+  ingress {
+    rule_no         = "8"
+    protocol        = "-1"
+    from_port       = "0"
+    to_port         = "0"
+    ipv6_cidr_block = "${aws_subnet.private-B.ipv6_cidr_block}"
+    action          = "allow"
+  }
+
+  ingress {
+    rule_no    = "9"
+    protocol   = "icmp"
+    from_port  = "0"
+    to_port    = "0"
+    icmp_code  = "-1"
+    icmp_type  = "-1"
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+
+  #  ingress {
+  #    rule_no         = "10"
+  #    protocol        = "58"
+  #    from_port       = "0"
+  #    to_port         = "0"
+  #		icmp_code = "-1"
+  #		icmp_type = "-1"
+  #    ipv6_cidr_block = "::/0"
+  #    action          = "allow"
+  #  }
+
+  ingress {
+    rule_no    = "11"
+    protocol   = "tcp"
+    from_port  = "1024"
+    to_port    = "65535"
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+  ingress {
+    rule_no         = "12"
+    protocol        = "tcp"
+    from_port       = "1024"
+    to_port         = "65535"
+    ipv6_cidr_block = "::/0"
+    action          = "allow"
+  }
+  ingress {
+    rule_no    = "13"
+    protocol   = "udp"
+    from_port  = "1024"
+    to_port    = "65535"
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+  ingress {
+    rule_no         = "14"
+    protocol        = "udp"
+    from_port       = "1024"
+    to_port         = "65535"
+    ipv6_cidr_block = "::/0"
+    action          = "allow"
+  }
   # Outbound
   egress {
     rule_no    = "1"
     protocol   = "-1"
     from_port  = "0"
     to_port    = "0"
-    cidr_block = "${aws_subnet.public.cidr_block}"
+    cidr_block = "${aws_subnet.public-A.cidr_block}"
     action     = "allow"
   }
-
   egress {
     rule_no         = "2"
     protocol        = "-1"
     from_port       = "0"
     to_port         = "0"
-    ipv6_cidr_block = "${aws_subnet.public.ipv6_cidr_block}"
+    ipv6_cidr_block = "${aws_subnet.public-A.ipv6_cidr_block}"
+    action          = "allow"
+  }
+  egress {
+    rule_no    = "3"
+    protocol   = "-1"
+    from_port  = "0"
+    to_port    = "0"
+    cidr_block = "${aws_subnet.public-B.cidr_block}"
+    action     = "allow"
+  }
+  egress {
+    rule_no         = "4"
+    protocol        = "-1"
+    from_port       = "0"
+    to_port         = "0"
+    ipv6_cidr_block = "${aws_subnet.public-B.ipv6_cidr_block}"
+    action          = "allow"
+  }
+  egress {
+    rule_no    = "5"
+    protocol   = "-1"
+    from_port  = "0"
+    to_port    = "0"
+    cidr_block = "${aws_subnet.private-A.cidr_block}"
+    action     = "allow"
+  }
+  egress {
+    rule_no         = "6"
+    protocol        = "-1"
+    from_port       = "0"
+    to_port         = "0"
+    ipv6_cidr_block = "${aws_subnet.private-A.ipv6_cidr_block}"
+    action          = "allow"
+  }
+  egress {
+    rule_no    = "7"
+    protocol   = "-1"
+    from_port  = "0"
+    to_port    = "0"
+    cidr_block = "${aws_subnet.private-B.cidr_block}"
+    action     = "allow"
+  }
+  egress {
+    rule_no         = "8"
+    protocol        = "-1"
+    from_port       = "0"
+    to_port         = "0"
+    ipv6_cidr_block = "${aws_subnet.private-B.ipv6_cidr_block}"
+    action          = "allow"
+  }
+  egress {
+    rule_no    = "9"
+    protocol   = "icmp"
+    from_port  = "0"
+    to_port    = "0"
+    icmp_type  = "-1"
+    icmp_code  = "-1"
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+  #  egress {
+  #    rule_no    = "10"
+  #    protocol   = "58"
+  #    from_port  = "0"
+  #    to_port    = "0"
+  #		icmp_code = "-1"
+  #		icmp_type = "-1"
+  #		ipv6_cidr_block = "::/0"
+  #    action     = "allow"
+  #  }
+	egress {
+    rule_no    = "11"
+    protocol   = "tcp"
+    from_port  = "53"
+    to_port    = "53"
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+  egress {
+    rule_no         = "12"
+    protocol        = "tcp"
+    from_port       = "53"
+    to_port         = "53"
+    ipv6_cidr_block = "::/0"
+    action          = "allow"
+  }
+	egress {
+    rule_no    = "13"
+    protocol   = "udp"
+    from_port  = "53"
+    to_port    = "53"
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+  egress {
+    rule_no         = "14"
+    protocol        = "udp"
+    from_port       = "53"
+    to_port         = "53"
+    ipv6_cidr_block = "::/0"
+    action          = "allow"
+  }
+	egress {
+    rule_no    = "15"
+    protocol   = "udp"
+    from_port  = "123"
+    to_port    = "123"
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+  egress {
+    rule_no         = "16"
+    protocol        = "udp"
+    from_port       = "123"
+    to_port         = "123"
+    ipv6_cidr_block = "::/0"
+    action          = "allow"
+  }
+ 	egress {
+    rule_no    = "17"
+    protocol   = "tcp"
+    from_port  = "22"
+    to_port    = "22"
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+  egress {
+    rule_no         = "18"
+    protocol        = "tcp"
+    from_port       = "22"
+    to_port         = "22"
+    ipv6_cidr_block = "::/0"
+    action          = "allow"
+  }
+	egress {
+    rule_no    = "19"
+    protocol   = "tcp"
+    from_port  = "80"
+    to_port    = "80"
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+  egress {
+    rule_no         = "20"
+    protocol        = "tcp"
+    from_port       = "80"
+    to_port         = "80"
+    ipv6_cidr_block = "::/0"
+    action          = "allow"
+  }
+  egress {
+    rule_no    = "21"
+    protocol   = "tcp"
+    from_port  = "443"
+    to_port    = "443"
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+  egress {
+    rule_no         = "22"
+    protocol        = "tcp"
+    from_port       = "443"
+    to_port         = "443"
+    ipv6_cidr_block = "::/0"
     action          = "allow"
   }
 }
@@ -275,8 +683,9 @@ resource "aws_instance" "bastion" {
   tags                   = "${merge(var.tags, map("Name", "${var.name}-bastion"))}"
   volume_tags            = "${merge(var.tags, map("Name", "${var.name}-bastion-system"))}"
   key_name               = "${aws_key_pair.dogfood.key_name}"
-  subnet_id              = "${aws_subnet.public.id}"
+  subnet_id              = "${aws_subnet.public-A.id}"
   vpc_security_group_ids = ["${aws_security_group.dogfood.id}"]
+  user_data              = "${file("userdata/bastion.tar.xz")}"
 }
 
 resource "aws_route53_record" "bastion-a" {
@@ -298,75 +707,44 @@ resource "aws_route53_record" "bastion-aaaa" {
 }
 
 ## Salt Master
-resource "aws_instance" "master" {
-	ami = "${var.ami-master}"
-	instance_type = "t2.micro"
-  tags                   = "${merge(var.tags, map("Name", "${var.name}-master"))}"
-  volume_tags            = "${merge(var.tags, map("Name", "${var.name}-master-system"))}"
-  key_name               = "${aws_key_pair.dogfood.key_name}"
-  subnet_id              = "${aws_subnet.public.id}"
-  vpc_security_group_ids = ["${aws_security_group.dogfood.id}"]
-}
-resource "aws_route53_record" "master-a" {
-  zone_id = "${aws_route53_zone.dogfood.id}"
-  name    = "master.${var.domain}"
-  type    = "A"
-  ttl     = "${var.dns-ttl}"
-  records = ["${aws_instance.master.public_ip}"]
-}
-
-resource "aws_route53_record" "master-aaaa" {
-  zone_id = "${aws_route53_zone.dogfood.id}"
-  name    = "master.${var.domain}"
-  type    = "AAAA"
-  ttl     = "${var.dns-ttl}"
-  records = ["${aws_instance.master.ipv6_addresses}"]
-}
-
-
-## Domain Controller`
-resource "aws_instance" "controller" {
-	ami = "${var.ami-controller}"
-	instance_type = "t2.micro"
-  tags                   = "${merge(var.tags, map("Name", "${var.name}-controller"))}"
-  volume_tags            = "${merge(var.tags, map("Name", "${var.name}-controller-system"))}"
-  key_name               = "${aws_key_pair.dogfood.key_name}"
-  subnet_id              = "${aws_subnet.public.id}"
-  vpc_security_group_ids = ["${aws_security_group.dogfood.id}"]
-}
-resource "aws_route53_record" "controller-a" {
-  zone_id = "${aws_route53_zone.dogfood.id}"
-  name    = "controller.${var.domain}"
-  type    = "A"
-  ttl     = "${var.dns-ttl}"
-  records = ["${aws_instance.controller.public_ip}"]
-}
-
-resource "aws_route53_record" "controller-aaaa" {
-  zone_id = "${aws_route53_zone.dogfood.id}"
-  name    = "controller.${var.domain}"
-  type    = "AAAA"
-  ttl     = "${var.dns-ttl}"
-  records = ["${aws_instance.controller.ipv6_addresses}"]
-}
+#resource "aws_instance" "master" {
+#  ami                    = "${var.ami-master}"
+#  instance_type          = "t2.micro"
+#  tags                   = "${merge(var.tags, map("Name", "${var.name}-master"))}"
+#  volume_tags            = "${merge(var.tags, map("Name", "${var.name}-master-system"))}"
+#  key_name               = "${aws_key_pair.dogfood.key_name}"
+#  subnet_id              = "${aws_subnet.public-A.id}"
+#  vpc_security_group_ids = ["${aws_security_group.dogfood.id}"]
+#  user_data = "${file("userdata/master.tar.xz")}"
+#}
+#
+#resource "aws_route53_record" "master-a" {
+#  zone_id = "${aws_route53_zone.dogfood.id}"
+#  name    = "master.${var.domain}"
+#  type    = "A"
+#  ttl     = "${var.dns-ttl}"
+#  records = ["${aws_instance.master.public_ip}"]
+#}
+#
+#resource "aws_route53_record" "master-aaaa" {
+#  zone_id = "${aws_route53_zone.dogfood.id}"
+#  name    = "master.${var.domain}"
+#  type    = "AAAA"
+#  ttl     = "${var.dns-ttl}"
+#  records = ["${aws_instance.master.ipv6_addresses}"]
+#}
 
 ## Portal
 resource "aws_instance" "portal" {
-	ami = "${var.ami-portal}"
-	instance_type = "t2.small"
+  ami                    = "${var.ami-portal}"
+  instance_type          = "t2.micro"
   tags                   = "${merge(var.tags, map("Name", "${var.name}-portal"))}"
   volume_tags            = "${merge(var.tags, map("Name", "${var.name}-portal-system"))}"
   key_name               = "${aws_key_pair.dogfood.key_name}"
-  subnet_id              = "${aws_subnet.public.id}"
+  subnet_id              = "${aws_subnet.private-A.id}"
   vpc_security_group_ids = ["${aws_security_group.dogfood.id}"]
 }
-resource "aws_route53_record" "portal-a" {
-  zone_id = "${aws_route53_zone.dogfood.id}"
-  name    = "portal.${var.domain}"
-  type    = "A"
-  ttl     = "${var.dns-ttl}"
-  records = ["${aws_instance.portal.public_ip}"]
-}
+
 resource "aws_route53_record" "portal-aaaa" {
   zone_id = "${aws_route53_zone.dogfood.id}"
   name    = "portal.${var.domain}"
@@ -375,6 +753,10 @@ resource "aws_route53_record" "portal-aaaa" {
   records = ["${aws_instance.portal.ipv6_addresses}"]
 }
 
+resource "aws_ssm_association" "portal_directory" {
+  name        = "Terraform-Directory-Writer"
+  instance_id = "${aws_instance.portal.id}"
+}
 
 ##
 ## DNS
@@ -519,7 +901,7 @@ resource "aws_directory_service_directory" "dogfood" {
 
   vpc_settings {
     vpc_id     = "${aws_vpc.dogfood.id}"
-    subnet_ids = ["${aws_subnet.public.id}", "${aws_subnet.private.id}"]
+    subnet_ids = ["${aws_subnet.private-A.id}", "${aws_subnet.private-B.id}"]
   }
 }
 

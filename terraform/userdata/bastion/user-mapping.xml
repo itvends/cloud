@@ -1,0 +1,22 @@
+>/usr/local/etc/guacamole-client/user-mapping.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Guacamole's default authentication module is a simple xml file.
+  Each user is specified with a corresponding <authorized> tag. This
+  tag contains all authorized connections for that user each denoted
+  with a <connections> tag. Each <connection> tag contains a
+  protocol and set of protocol-specific parameters, specified with
+  the <protocol> and <param> tags respectively. For more information
+  visit http://guac-dev.org/doc/gug/configuring-guacamole.html -->
+
+
+<user-mapping>
+	<authorize username="guacamole" password="guacamole">
+		<connection name="ssh">
+			<protocol>ssh</protocol>
+			<param name="hostname">localhost</param>
+			<param name="port">22</param>
+			<param name="font-name">monospace</param>
+		</connection>
+	</authorize>
+</user-mapping>
+

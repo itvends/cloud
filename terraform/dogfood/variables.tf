@@ -28,6 +28,11 @@ variable "domain" {
   default     = ""
 }
 
+variable "ldapou" {
+	description = "LDAP Organizational Unit"
+	default = ""
+}
+
 variable "alias" {
   description = "Alias for NetBIOS and Single Sign-On"
   default     = ""
@@ -35,7 +40,7 @@ variable "alias" {
 
 variable "dns-ttl" {
   description = "Time-To-Live for static record caching"
-  default     = "1000"
+  default     = "100"
 }
 
 variable "admin" {
