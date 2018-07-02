@@ -18,6 +18,11 @@
 *.tfstate.backup
 .terraform
 
+## Artifacts
+*.tar.*
+*.tgz
+*.txz
+
 ##
 ## Imported
 ##
