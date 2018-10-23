@@ -741,7 +741,7 @@ resource "aws_instance" "portal" {
   tags                   = "${merge(var.tags, map("Name", "${var.name}-portal"))}"
   volume_tags            = "${merge(var.tags, map("Name", "${var.name}-portal-system"))}"
   key_name               = "${aws_key_pair.dogfood.key_name}"
-  subnet_id              = "${aws_subnet.private-A.id}"
+  subnet_id              = "${aws_subnet.public-A.id}"
   vpc_security_group_ids = ["${aws_security_group.dogfood.id}"]
 }
 
